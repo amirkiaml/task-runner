@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Task Runner</title>
+<style>
+  :root {
+    --bg: #F5F6F4; --surface: #FFFFFF; --border: #DDE1DD;
+    --text: #1A1D1B; --muted: #6B716C; --accent: #2E6B4F; --accent-bg: #E5F0EA;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, Segoe UI, sans-serif; background: var(--bg); color: var(--text);
+    margin: 0; padding: 32px 20px; line-height: 1.5;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .subtitle { color: var(--muted); font-size: 14px; margin: 0 0 24px; }
+
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 20px; }
+  .panel h2 { font-size: 15px; margin: 0 0 12px; }
+
+  textarea {
+    width: 100%; min-height: 70px; padding: 10px; border: 1px solid var(--border); border-radius: 6px;
+    font-size: 14px; font-family: inherit; resize: vertical;
+  }
+  button {
+    margin-top: 10px; padding: 9px 18px; background: var(--text); color: #fff; border: none;
+    border-radius: 6px; font-size: 14px; cursor: pointer;
+  }
+  button:disabled { opacity: 0.5; cursor: default; }
+  button:hover:not(:disabled) { opacity: 0.85; }
+
+  .result-final { font-size: 15px; padding: 12px; background: var(--accent-bg); border-radius: 6px; margin-bottom: 14px; white-space: pre-line; }
+  .tools-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+  .tool-badge {
+    font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 12px;
+    background: var(--accent); color: #fff;
+  }
+  .trace-list { list-style: none; padding: 0; margin: 0; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+  .trace-list li { padding: 6px 0; border-bottom: 1px dashed var(--border); }
+  .trace-list li:last-child { border-bottom: none; }
+
+  .history-item {
+    padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 8px;
+    cursor: pointer; font-size: 13px;
+  }
+  .history-item:hover { background: var(--accent-bg); }
+  .history-item .task-text { font-weight: 500; }
+  .history-item .task-meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
+
+  .empty { color: var(--muted); font-size: 13px; }
+  .error { color: #B3261E; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Agent Task Runner</h1>
+  <p class="subtitle">Enter a task, the agent picks a tool and executes it.</p>
+
+  <div class="panel">
+    <h2>New task</h2>
+    <textarea id="task-input" placeholder="e.g. add 5 and 6, then convert the result to uppercase"></textarea>
+    <br>
+    <button id="submit-btn">Submit</button>
+  </div>
+
+  <div class="panel" id="result-panel" style="display:none;">
+    <h2>Result</h2>
+    <div id="result-timestamp" style="font-size:12px;color:var(--muted);margin-bottom:10px;"></div>
+    <div id="result-final" class="result-final"></div>
+    <div id="result-tools" class="tools-row"></div>
+    <ul id="result-trace" class="trace-list"></ul>
+  </div>
+
+  <div class="panel">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <h2 style="margin:0;">History</h2>
+      <button id="clear-history-btn" style="background:#B3261E;margin:0;padding:6px 12px;font-size:12px;">Clear history</button>
+    </div>
+    <div id="history-list"></div>
+  </div>
+</div>
+
+<script>
+  const taskInput = document.getElementById('task-input');
+  const submitBtn = document.getElementById('submit-btn');
+  const resultPanel = document.getElementById('result-panel');
+  const resultFinal = document.getElementById('result-final');
+  const resultTools = document.getElementById('result-tools');
+  const resultTimestamp = document.getElementById('result-timestamp');
+  const resultTrace = document.getElementById('result-trace');
+  const historyList = document.getElementById('history-list');
+
+  function renderResult(data) {
+    resultPanel.style.display = 'block';
+    resultFinal.textContent = data.error ? `Error: ${data.error}` : data.response;
+    resultFinal.className = data.error ? 'error' : 'result-final';
+    resultTimestamp.textContent = data.timestamp ? new Date(data.timestamp).toLocaleString() : '';
+
+    resultTools.innerHTML = (data.tools_used || [])
+      .map(t => `<span class="tool-badge">${t}</span>`).join('');
+
+    resultTrace.innerHTML = (data.trace || [])
+      .map(step => `<li>${step}</li>`).join('');
+  }
+
+  async function submitTask() {
+    const value = taskInput.value.trim();
+    if (!value) return;
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Running...';
+
+    try {
+      const res = await fetch('/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_input: value }),
+      });
+      const data = await res.json();
+      renderResult(data);
+      await loadHistory();
+    } catch (err) {
+      renderResult({ error: err.message });
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Submit';
+    }
+  }
+
+  async function loadHistory() {
+    try {
+      const res = await fetch('/history');
+      const tasks = await res.json();
+
+      if (!tasks.length) {
+        historyList.innerHTML = '<p class="empty">No tasks yet.</p>';
+        return;
+      }
+
+      historyList.innerHTML = tasks.map(t => `
+        <div class="history-item" data-id="${t.id}">
+          <div class="task-text">${t.user_input}</div>
+          <div class="task-meta">${new Date(t.timestamp).toLocaleString()}</div>
+        </div>
+      `).join('');
+
+      historyList.querySelectorAll('.history-item').forEach(el => {
+        el.addEventListener('click', () => {
+          const task = tasks.find(t => String(t.id) === el.dataset.id);
+          if (task) {
+            renderResult({
+              response: task.final_output,
+              tools_used: task.tools_used,
+              trace: task.trace,
+              timestamp: task.timestamp,
+            });
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }
+        });
+      });
+    } catch (err) {
+      historyList.innerHTML = `<p class="error">Failed to load history: ${err.message}</p>`;
+    }
+  }
+
+  submitBtn.addEventListener('click', submitTask);
+  taskInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) submitTask();
+  });
+
+  document.getElementById('clear-history-btn').addEventListener('click', async () => {
+    if (!confirm('Delete all task history? This cannot be undone.')) return;
+    try {
+      await fetch('/history', { method: 'DELETE' });
+      resultPanel.style.display = 'none';
+      await loadHistory();
+    } catch (err) {
+      historyList.innerHTML = `<p class="error">Failed to clear history: ${err.message}</p>`;
+    }
+  });
+
+  loadHistory();
+</script>
+</body>
+</html>
