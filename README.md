@@ -80,15 +80,18 @@ tested or replaced independently.
 ## AI assistance
 
 I used Claude throughout this build for the FastAPI backend wiring and the
-frontend (HTML/CSS/JS), both areas I'm actively upskilling in. Worth being
-upfront about one detour: I initially built this using the OpenAI Agents
-SDK, with an LLM deciding which tool to call — before catching that the
+frontend (HTML/CSS/JS), both areas I'm actively upskilling in. I also used 
+Claude to write up this ReadMe file based on my notes and prompts. 
+
+**Worth being upfront about one detour:** I initially built this using the OpenAI 
+Agents SDK, with an LLM deciding which tool to call — before catching that the
 assignment email explicitly said no AI/LLM/model-provider integration was
 needed. I rebuilt it as the fully deterministic, rule-based system in this
 repo once I caught that. All design decisions in the final version — the
 clause-splitting approach, the tool-matching patterns, the module
 structure — were mine, tested and debugged directly rather than submitted
-unreviewed. Happy to walk through any part of the design in detail.
+unreviewed. They all originated from my initial agents SDK work, which I had
+spent most of my time working on.
 
 ## Assumptions and tradeoffs
 
@@ -155,7 +158,7 @@ system.
   the current regex/keyword approach is deliberately simple; a natural
   extension (outside this challenge's no-AI scope) would be swapping the
   rule-based router for an LLM-based one, which I've built and tested
-  separately in a different project.
+  separately in an initial iteration of this project.
 - **Automated tests** for each tool in isolation, and for the router's
   clause-matching logic against a fixed set of prompts.
 - **File locking or a real database** for persistence, if this ever needed
